@@ -11,7 +11,7 @@ jobs:
     env:
       ZUPLO_API_KEY: ${{ secrets.ZUPLO_API_KEY }}
       # Repository variables (Settings > Secrets and variables > Actions > Variables).
-      ZUPLO_PROJECT: ${{ vars.ZUPLO_PROJECT || 'exchange-rates' }}
+      ZUPLO_PROJECT: ${{ vars.ZUPLO_PROJECT || 'jubilant-octo-carnival' }}
       ZUPLO_ACCOUNT: ${{ vars.ZUPLO_ACCOUNT }}
     defaults:
       run:
