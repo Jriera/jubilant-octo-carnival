@@ -64,7 +64,8 @@ carry `"stale": true`.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `PORT` | `8080` | Listen port |
-| `RAPIDAPI_PROXY_SECRET` | unset | When set, `/v1` calls must send it in `X-RapidAPI-Proxy-Secret` |
+| `RAPIDAPI_PROXY_SECRET` | unset | Secret RapidAPI sends in `X-RapidAPI-Proxy-Secret` |
+| `GATEWAY_SECRET` | unset | Secret the Zuplo gateway sends in `X-Gateway-Secret`. When either secret is set, `/v1` calls must carry one of them |
 | `REFRESH_INTERVAL` | `10m` | How often to poll the ECB daily file |
 | `ECB_BASE_URL` | ECB site | Override the download location |
 | `TAX_COUNTRIES` | `PL,CZ,HU,GB` | Tax-rate countries to load; `none` turns them off |
@@ -92,3 +93,11 @@ One-time setup in the Railway dashboard:
 
 Railway builds the Dockerfile, sets `PORT`, and waits for `/readyz` before
 switching traffic. After that, every merge to `main` deploys automatically.
+
+## Direct sales and MCP (Zuplo)
+
+`gateway/` is a [Zuplo](https://zuplo.com) project that sells the API without
+RapidAPI: API keys, plans billed through Stripe, a developer portal, and an
+MCP endpoint (`/mcp`) so AI assistants can call the API with the same key.
+It forwards to this service with `X-Gateway-Secret`. Setup steps are in
+[gateway/README.md](gateway/README.md).
