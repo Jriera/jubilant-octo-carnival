@@ -12,7 +12,7 @@ jobs:
       ZUPLO_API_KEY: ${{ secrets.ZUPLO_API_KEY }}
       # Repository variables (Settings > Secrets and variables > Actions > Variables).
       ZUPLO_PROJECT: ${{ vars.ZUPLO_PROJECT || 'jubilant-octo-carnival' }}
-      ZUPLO_ACCOUNT: ${{ vars.ZUPLO_ACCOUNT }}
+      ZUPLO_ACCOUNT: ${{ vars.ZUPLO_ACCOUNT || 'blue_net_walrus' }}
     defaults:
       run:
         working-directory: gateway
@@ -29,5 +29,5 @@ jobs:
       # Deploys only from main, and only once the ZUPLO_API_KEY secret exists.
       - if: github.event_name == 'push' && env.ZUPLO_API_KEY != ''
         run: >-
-          npx zuplo deploy --api-key "$ZUPLO_API_KEY" --project "$ZUPLO_PROJECT"
+          npx zuplo deploy -v --api-key "$ZUPLO_API_KEY" --project "$ZUPLO_PROJECT"
           ${ZUPLO_ACCOUNT:+--account "$ZUPLO_ACCOUNT"} --branch main
