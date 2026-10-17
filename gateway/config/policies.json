@@ -1,0 +1,79 @@
+{
+  "policies": [
+    {
+      "name": "monetization",
+      "policyType": "monetization-inbound",
+      "handler": {
+        "export": "MonetizationInboundPolicy",
+        "module": "$import(@zuplo/runtime)",
+        "options": {
+          "cacheTtlSeconds": 60,
+          "meters": {
+            "api_requests": 1
+          },
+          "meterOnStatusCodes": "200-299"
+        }
+      }
+    },
+    {
+      "name": "monetization-tax-rates",
+      "policyType": "monetization-inbound",
+      "handler": {
+        "export": "MonetizationInboundPolicy",
+        "module": "$import(@zuplo/runtime)",
+        "options": {
+          "cacheTtlSeconds": 60,
+          "meters": {
+            "api_requests": 1
+          },
+          "meterOnStatusCodes": "200-299",
+          "requiredEntitlements": [
+            "tax_rates"
+          ]
+        }
+      }
+    },
+    {
+      "name": "monetization-timeseries",
+      "policyType": "monetization-inbound",
+      "handler": {
+        "export": "MonetizationInboundPolicy",
+        "module": "$import(@zuplo/runtime)",
+        "options": {
+          "cacheTtlSeconds": 60,
+          "meters": {
+            "api_requests": 1
+          },
+          "meterOnStatusCodes": "200-299",
+          "requiredEntitlements": [
+            "timeseries"
+          ]
+        }
+      }
+    },
+    {
+      "name": "csv-gate",
+      "policyType": "custom-code-inbound",
+      "handler": {
+        "export": "default",
+        "module": "$import(./modules/csv-gate)"
+      }
+    },
+    {
+      "name": "upstream",
+      "policyType": "custom-code-inbound",
+      "handler": {
+        "export": "default",
+        "module": "$import(./modules/upstream)"
+      }
+    },
+    {
+      "name": "api-key-from-query",
+      "policyType": "custom-code-inbound",
+      "handler": {
+        "export": "default",
+        "module": "$import(./modules/api-key-from-query)"
+      }
+    }
+  ]
+}
