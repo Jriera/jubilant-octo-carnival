@@ -30,6 +30,7 @@ const (
 type Server struct {
 	Store       *rates.Store
 	Tax         []*official.Country // tax and invoicing rules; optional
+	Extra       *official.Extra     // currencies the ECB doesn't quote; optional
 	ProxySecret string              // when set, requests must carry X-RapidAPI-Proxy-Secret
 	Now         func() time.Time    // for tests
 }
@@ -77,14 +78,15 @@ func (s *Server) ready(w http.ResponseWriter, _ *http.Request) {
 }
 
 type ratesResponse struct {
-	Source        string             `json:"source"`
-	Attribution   string             `json:"attribution"`
-	Base          string             `json:"base"`
-	Date          string             `json:"date"`
-	RequestedDate string             `json:"requested_date,omitempty"`
-	Derived       bool               `json:"derived"`
-	Stale         bool               `json:"stale,omitempty"`
-	Rates         map[string]float64 `json:"rates"`
+	Source        string                 `json:"source"`
+	Attribution   string                 `json:"attribution"`
+	Base          string                 `json:"base"`
+	Date          string                 `json:"date"`
+	RequestedDate string                 `json:"requested_date,omitempty"`
+	Derived       bool                   `json:"derived"`
+	Stale         bool                   `json:"stale,omitempty"`
+	Rates         map[string]float64     `json:"rates"`
+	OtherSources  map[string]otherSource `json:"other_sources,omitempty"`
 }
 
 func (s *Server) latest(w http.ResponseWriter, r *http.Request) {
@@ -95,7 +97,7 @@ func (s *Server) latest(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	day, err := s.Store.Latest()
+	day, x, err := s.latestDay()
 	if err != nil {
 		s.storeErr(w, err)
 		return
@@ -107,26 +109,28 @@ func (s *Server) latest(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Cache-Control", "public, max-age=60")
 	if wantCSV(r) {
-		writeCSV(w, "latest_"+base+"_"+day.Date+".csv", base, base != "EUR", dayRows(day.Date, out))
+		writeCSV(w, "latest_"+base+"_"+day.Date+".csv", base, base != "EUR", dayRows(day.Date, base, out, x))
 		return
 	}
+	others := x.others(base, out, true)
 	writeJSON(w, ratesResponse{
-		Source: Source, Attribution: Attribution, Base: base, Date: day.Date,
-		Derived: base != "EUR", Stale: s.isStale(day), Rates: out,
+		Source: Source, Attribution: attribution(others), Base: base, Date: day.Date,
+		Derived: base != "EUR", Stale: s.isStale(day), Rates: out, OtherSources: others,
 	})
 }
 
 type convertResponse struct {
-	Source      string  `json:"source"`
-	Attribution string  `json:"attribution"`
-	Date        string  `json:"date"`
-	From        string  `json:"from"`
-	To          string  `json:"to"`
-	Amount      float64 `json:"amount"`
-	Rate        float64 `json:"rate"`
-	Result      float64 `json:"result"`
-	Derived     bool    `json:"derived"`
-	Stale       bool    `json:"stale,omitempty"`
+	Source       string                 `json:"source"`
+	Attribution  string                 `json:"attribution"`
+	Date         string                 `json:"date"`
+	From         string                 `json:"from"`
+	To           string                 `json:"to"`
+	Amount       float64                `json:"amount"`
+	Rate         float64                `json:"rate"`
+	Result       float64                `json:"result"`
+	Derived      bool                   `json:"derived"`
+	Stale        bool                   `json:"stale,omitempty"`
+	OtherSources map[string]otherSource `json:"other_sources,omitempty"`
 }
 
 func (s *Server) convert(w http.ResponseWriter, r *http.Request) {
@@ -147,6 +151,7 @@ func (s *Server) convert(w http.ResponseWriter, r *http.Request) {
 	}
 	var (
 		day ecb.Day
+		x   extra
 		err error
 	)
 	if d := q.Get("date"); d != "" {
@@ -154,9 +159,9 @@ func (s *Server) convert(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusBadRequest, "date must be YYYY-MM-DD")
 			return
 		}
-		day, err = s.Store.On(d)
+		day, x, err = s.dayOn(d)
 	} else {
-		day, err = s.Store.Latest()
+		day, x, err = s.latestDay()
 	}
 	if err != nil {
 		s.storeErr(w, err)
@@ -172,21 +177,24 @@ func (s *Server) convert(w http.ResponseWriter, r *http.Request) {
 		rate = out[to]
 	}
 	w.Header().Set("Cache-Control", "public, max-age=60")
+	others := x.others(from, out, true)
 	writeJSON(w, convertResponse{
-		Source: Source, Attribution: Attribution, Date: day.Date, From: from, To: to,
+		Source: Source, Attribution: attribution(others), Date: day.Date, From: from, To: to,
 		Amount: amount, Rate: rate, Result: round(amount*rate, 6),
 		Derived: from != "EUR" && from != to, Stale: q.Get("date") == "" && s.isStale(day),
+		OtherSources: others,
 	})
 }
 
 type rangeResponse struct {
-	Source      string                        `json:"source"`
-	Attribution string                        `json:"attribution"`
-	Base        string                        `json:"base"`
-	Start       string                        `json:"start"`
-	End         string                        `json:"end"`
-	Derived     bool                          `json:"derived"`
-	Rates       map[string]map[string]float64 `json:"rates"`
+	Source       string                        `json:"source"`
+	Attribution  string                        `json:"attribution"`
+	Base         string                        `json:"base"`
+	Start        string                        `json:"start"`
+	End          string                        `json:"end"`
+	Derived      bool                          `json:"derived"`
+	Rates        map[string]map[string]float64 `json:"rates"`
+	OtherSources map[string]otherSource        `json:"other_sources,omitempty"`
 }
 
 func (s *Server) history(w http.ResponseWriter, r *http.Request) {
@@ -203,7 +211,7 @@ func (s *Server) history(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusBadRequest, "date must be YYYY-MM-DD")
 			return
 		}
-		day, err := s.Store.On(d)
+		day, x, err := s.dayOn(d)
 		if err != nil {
 			s.storeErr(w, err)
 			return
@@ -215,12 +223,13 @@ func (s *Server) history(w http.ResponseWriter, r *http.Request) {
 		}
 		w.Header().Set("Cache-Control", cacheFor(d, s.now()))
 		if wantCSV(r) {
-			writeCSV(w, "history_"+base+"_"+day.Date+".csv", base, base != "EUR", dayRows(day.Date, out))
+			writeCSV(w, "history_"+base+"_"+day.Date+".csv", base, base != "EUR", dayRows(day.Date, base, out, x))
 			return
 		}
+		others := x.others(base, out, true)
 		writeJSON(w, ratesResponse{
-			Source: Source, Attribution: Attribution, Base: base, Date: day.Date,
-			RequestedDate: d, Derived: base != "EUR", Rates: out,
+			Source: Source, Attribution: attribution(others), Base: base, Date: day.Date,
+			RequestedDate: d, Derived: base != "EUR", Rates: out, OtherSources: others,
 		})
 		return
 	}
@@ -240,7 +249,7 @@ func (s *Server) history(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "range is limited to 366 days per request")
 		return
 	}
-	days, err := s.Store.Range(start, end)
+	days, err := s.daysIn(start, end)
 	if err != nil {
 		s.storeErr(w, err)
 		return
@@ -249,19 +258,19 @@ func (s *Server) history(w http.ResponseWriter, r *http.Request) {
 		Source: Source, Attribution: Attribution, Base: base, Start: start, End: end,
 		Derived: base != "EUR", Rates: make(map[string]map[string]float64, len(days)),
 	}
+	var rows []csvRow
 	for _, d := range days {
-		out, err := rates.Cross(d, base, symbols)
+		out, err := rates.Cross(d.Day, base, symbols)
 		if errors.Is(err, rates.ErrUnknownCurrency) {
 			continue // currency not quoted that day (e.g. before it was added)
 		}
 		resp.Rates[d.Date] = out
+		resp.OtherSources = mergeOthers(resp.OtherSources, d.x.others(base, out, false))
+		rows = append(rows, dayRows(d.Date, base, out, d.x)...)
 	}
+	resp.Attribution = attribution(resp.OtherSources)
 	w.Header().Set("Cache-Control", cacheFor(end, s.now()))
 	if wantCSV(r) {
-		var rows []csvRow
-		for date, rs := range resp.Rates {
-			rows = append(rows, dayRows(date, rs)...)
-		}
 		writeCSV(w, "history_"+base+"_"+start+"_"+end+".csv", base, resp.Derived, rows)
 		return
 	}
@@ -275,14 +284,18 @@ type currency struct {
 }
 
 func (s *Server) currencies(w http.ResponseWriter, _ *http.Request) {
-	day, err := s.Store.Latest()
+	day, x, err := s.latestDay()
 	if err != nil {
 		s.storeErr(w, err)
 		return
 	}
 	list := make([]currency, 0, len(day.Rates))
 	for c := range day.Rates {
-		list = append(list, currency{Code: c, Name: Names[c], Source: Source})
+		src := Source
+		if x.has(c) {
+			src = ExtraSource
+		}
+		list = append(list, currency{Code: c, Name: Names[c], Source: src})
 	}
 	sort.Slice(list, func(i, j int) bool { return list[i].Code < list[j].Code })
 	w.Header().Set("Cache-Control", "public, max-age=3600")

@@ -1,7 +1,8 @@
 # Exchange Rates API
 
 Fast, read-only API for official euro reference exchange rates published by
-the European Central Bank, with history back to 1999.
+the European Central Bank, with history back to 1999. Currencies the ECB does
+not quote (about 115 more) come from Narodowy Bank Polski tables A and B.
 
 Source: ECB statistics. Reference rates are for information purposes only.
 
@@ -20,6 +21,10 @@ Source: ECB statistics. Reference rates are for information purposes only.
 | `GET /healthz`, `GET /readyz` | Liveness, and readiness once rates are loaded |
 
 Every response carries `source`, `attribution` and the publication `date`.
+Rates for currencies the ECB does not quote come from NBP table A (daily) or
+table B (weekly, Wednesdays), converted to EUR with NBP's own euro rate. They
+are listed under `other_sources` with the table and its publication date, and
+a table older than nine days is not served.
 Rates for a base other than EUR are cross rates computed from the ECB's EUR
 rates and are marked `"derived": true`. Add `format=csv` (or send
 `Accept: text/csv`) to `latest`, `history` or `timeseries` for a CSV download
@@ -64,7 +69,8 @@ carry `"stale": true`.
 | `ECB_BASE_URL` | ECB site | Override the download location |
 | `TAX_COUNTRIES` | `PL,CZ,HU,GB` | Tax-rate countries to load; `none` turns them off |
 | `TAX_HISTORY_YEARS` | `10` | Years of tax-rate history to load |
-| `TAX_REFRESH_INTERVAL` | `30m` | How often to poll the tax-rate sources |
+| `TAX_REFRESH_INTERVAL` | `30m` | How often to poll the tax-rate and NBP sources |
+| `EXTRA_CURRENCIES` | `nbp` | `none` serves ECB currencies only |
 
 ## Develop
 

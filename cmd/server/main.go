@@ -8,7 +8,8 @@
 //	REFRESH_INTERVAL       how often to poll the ECB daily file (default 10m)
 //	TAX_COUNTRIES          tax-rate countries to load (default PL,CZ,HU,GB; "none" disables)
 //	TAX_HISTORY_YEARS      years of tax-rate history to load (default 10; HMRC starts 2021)
-//	TAX_REFRESH_INTERVAL   how often to poll the tax-rate sources (default 30m)
+//	TAX_REFRESH_INTERVAL   how often to poll the tax-rate and NBP sources (default 30m)
+//	EXTRA_CURRENCIES       "nbp" (default) adds NBP table A/B currencies the ECB lacks; "none" disables
 package main
 
 import (
@@ -46,15 +47,15 @@ func main() {
 	client := ecb.NewClient(os.Getenv("ECB_BASE_URL"))
 	go refresh(ctx, client, store, interval)
 
-	tax, err := startTax(ctx)
+	tax, extra, err := startOfficial(ctx)
 	if err != nil {
-		slog.Error("bad tax configuration", "err", err)
+		slog.Error("bad configuration", "err", err)
 		os.Exit(1)
 	}
 
 	srv := &http.Server{
 		Addr:              ":" + port,
-		Handler:           (&api.Server{Store: store, Tax: tax, ProxySecret: os.Getenv("RAPIDAPI_PROXY_SECRET")}).Handler(),
+		Handler:           (&api.Server{Store: store, Tax: tax, Extra: extra, ProxySecret: os.Getenv("RAPIDAPI_PROXY_SECRET")}).Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      15 * time.Second,
@@ -116,61 +117,86 @@ func refresh(ctx context.Context, c *ecb.Client, s *rates.Store, interval time.D
 	}
 }
 
-// startTax starts one loader per enabled country. Each loads independently,
-// so a slow or failing central bank never delays the others or the ECB data.
-func startTax(ctx context.Context) ([]*official.Country, error) {
-	want := strings.ToUpper(env("TAX_COUNTRIES", "PL,CZ,HU,GB"))
-	if want == "NONE" {
-		return nil, nil
-	}
+// startOfficial starts one loader per enabled national source. Each loads
+// independently, so a slow or failing bank never delays the others or the
+// ECB data. NBP table A is loaded once and shared by the Poland tax rule and
+// the extra currencies.
+func startOfficial(ctx context.Context) ([]*official.Country, *official.Extra, error) {
 	years, err := strconv.Atoi(env("TAX_HISTORY_YEARS", "10"))
 	if err != nil || years < 1 {
-		return nil, errors.New("TAX_HISTORY_YEARS must be a positive whole number")
+		return nil, nil, errors.New("TAX_HISTORY_YEARS must be a positive whole number")
 	}
 	interval, err := time.ParseDuration(env("TAX_REFRESH_INTERVAL", "30m"))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+	from := time.Now().UTC().AddDate(-years, 0, 0)
+
+	enabled := map[string]bool{}
+	if want := strings.ToUpper(env("TAX_COUNTRIES", "PL,CZ,HU,GB")); want != "NONE" {
+		for _, c := range strings.Split(want, ",") {
+			c = strings.TrimSpace(c)
+			switch c {
+			case "PL", "CZ", "HU", "GB":
+				enabled[c] = true
+			default:
+				return nil, nil, errors.New("unknown TAX_COUNTRIES entry " + c)
+			}
+		}
+	}
+	var extra *official.Extra
+	switch strings.ToLower(env("EXTRA_CURRENCIES", "nbp")) {
+	case "nbp":
+		extra = &official.Extra{B: official.NewSeries()}
+	case "none":
+	default:
+		return nil, nil, errors.New("EXTRA_CURRENCIES must be nbp or none")
+	}
+
+	var nbpA *official.Series
+	if enabled["PL"] || extra != nil {
+		nbpA = official.NewSeries()
+		go load(ctx, "NBP-A", nbpA, official.NewNBP(""), from, interval)
+	}
+	if extra != nil {
+		extra.A = nbpA
+		go load(ctx, "NBP-B", extra.B, official.NewNBPB(""), from, interval)
+	}
+
 	fetchers := map[string]official.Fetcher{
-		"PL": official.NewNBP(""),
 		"CZ": official.NewCNB(""),
 		"HU": official.NewMNB(""),
 		"GB": official.NewHMRC(""),
 	}
-	enabled := map[string]bool{}
-	for _, c := range strings.Split(want, ",") {
-		c = strings.TrimSpace(c)
-		if _, ok := fetchers[c]; !ok {
-			return nil, errors.New("unknown TAX_COUNTRIES entry " + c)
-		}
-		enabled[c] = true
-	}
-	from := time.Now().UTC().AddDate(-years, 0, 0)
-	var out []*official.Country
+	var tax []*official.Country
 	for _, c := range official.Countries() {
 		if !enabled[c.Code] {
 			continue
 		}
-		c.Series = official.NewSeries()
-		go refreshTax(ctx, c, fetchers[c.Code], from, interval)
-		out = append(out, c)
+		if c.Code == "PL" {
+			c.Series = nbpA
+		} else {
+			c.Series = official.NewSeries()
+			go load(ctx, c.Source, c.Series, fetchers[c.Code], from, interval)
+		}
+		tax = append(tax, c)
 	}
-	return out, nil
+	return tax, extra, nil
 }
 
-func refreshTax(ctx context.Context, c *official.Country, f official.Fetcher, from time.Time, interval time.Duration) {
-	log := slog.With("source", c.Source)
+func load(ctx context.Context, name string, series *official.Series, f official.Fetcher, from time.Time, interval time.Duration) {
+	log := slog.With("source", name)
 	backoff := 10 * time.Second
-	for c.Series.Len() == 0 {
+	for series.Len() == 0 {
 		tables, err := f.History(ctx, from)
 		if err == nil && len(tables) > 0 {
-			log.Info("tax history loaded", "tables", c.Series.Merge(tables))
+			log.Info("history loaded", "tables", series.Merge(tables))
 			break
 		}
 		if ctx.Err() != nil {
 			return
 		}
-		log.Error("tax history load failed", "err", err, "retry_in", backoff.String())
+		log.Error("history load failed", "err", err, "retry_in", backoff.String())
 		select {
 		case <-ctx.Done():
 			return
@@ -188,13 +214,13 @@ func refreshTax(ctx context.Context, c *official.Country, f official.Fetcher, fr
 		}
 		tables, err := f.Recent(ctx)
 		if err != nil {
-			log.Warn("tax refresh failed", "err", err)
+			log.Warn("refresh failed", "err", err)
 			continue
 		}
-		before, _ := c.Series.Last()
-		c.Series.Merge(tables)
-		if after, _ := c.Series.Last(); after.Date != before.Date {
-			log.Info("new tax table", "date", after.Date, "table", after.ID)
+		before, _ := series.Last()
+		series.Merge(tables)
+		if after, _ := series.Last(); after.Date != before.Date {
+			log.Info("new table", "date", after.Date, "table", after.ID)
 		}
 	}
 }

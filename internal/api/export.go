@@ -39,8 +39,8 @@ func validFormat(w http.ResponseWriter, r *http.Request) bool {
 }
 
 type csvRow struct {
-	date, currency string
-	rate           float64
+	date, currency, source string
+	rate                   float64
 }
 
 // writeCSV writes long-format rows (one rate per line), which spreadsheets and
@@ -54,20 +54,33 @@ func writeCSV(w http.ResponseWriter, filename, base string, derived bool, rows [
 	})
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
 	w.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
-	w.Header().Set("X-Attribution", Attribution)
+	attr := Attribution
+	for _, r := range rows {
+		if r.source == ExtraSource {
+			attr += ExtraAttribution
+			break
+		}
+	}
+	w.Header().Set("X-Attribution", attr)
 	cw := csv.NewWriter(w)
 	_ = cw.Write([]string{"date", "base", "currency", "rate", "derived", "source"})
 	d := strconv.FormatBool(derived)
 	for _, r := range rows {
-		_ = cw.Write([]string{r.date, base, r.currency, strconv.FormatFloat(r.rate, 'f', -1, 64), d, Source})
+		_ = cw.Write([]string{r.date, base, r.currency, strconv.FormatFloat(r.rate, 'f', -1, 64), d, r.source})
 	}
 	cw.Flush()
 }
 
-func dayRows(date string, rs map[string]float64) []csvRow {
+// dayRows names the source per row: ECB, or NBP for currencies withExtra
+// added (and for every row when the base itself came from NBP).
+func dayRows(date, base string, rs map[string]float64, x extra) []csvRow {
 	rows := make([]csvRow, 0, len(rs))
 	for c, v := range rs {
-		rows = append(rows, csvRow{date, c, v})
+		src := Source
+		if x.has(c) || x.has(base) {
+			src = ExtraSource
+		}
+		rows = append(rows, csvRow{date, c, src, v})
 	}
 	return rows
 }
@@ -87,14 +100,15 @@ type seriesStats struct {
 }
 
 type seriesResponse struct {
-	Source      string                 `json:"source"`
-	Attribution string                 `json:"attribution"`
-	Base        string                 `json:"base"`
-	Start       string                 `json:"start"`
-	End         string                 `json:"end"`
-	Derived     bool                   `json:"derived"`
-	Series      map[string][]point     `json:"series"`
-	Stats       map[string]seriesStats `json:"stats"`
+	Source       string                 `json:"source"`
+	Attribution  string                 `json:"attribution"`
+	Base         string                 `json:"base"`
+	Start        string                 `json:"start"`
+	End          string                 `json:"end"`
+	Derived      bool                   `json:"derived"`
+	Series       map[string][]point     `json:"series"`
+	Stats        map[string]seriesStats `json:"stats"`
+	OtherSources map[string]otherSource `json:"other_sources,omitempty"`
 }
 
 // timeseries returns one ordered array per currency, plus start/end/min/max
@@ -123,14 +137,14 @@ func (s *Server) timeseries(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "range is limited to 3660 days (10 years) per request")
 		return
 	}
-	days, err := s.Store.Range(start, end)
+	days, err := s.daysIn(start, end)
 	if err != nil {
 		s.storeErr(w, err)
 		return
 	}
 	// Validate requested symbols against the latest day so a typo is a 400,
 	// not an empty series.
-	if latest, err := s.Store.Latest(); err == nil {
+	if latest, _, err := s.latestDay(); err == nil {
 		if _, err := rates.Cross(latest, base, symbols); err != nil && !earlierOnly(days, base, symbols) {
 			s.storeErr(w, err)
 			return
@@ -139,18 +153,20 @@ func (s *Server) timeseries(w http.ResponseWriter, r *http.Request) {
 
 	series := map[string][]point{}
 	var rows []csvRow
+	var others map[string]otherSource
 	for _, d := range days {
-		out, err := rates.Cross(d, base, symbols)
+		out, err := rates.Cross(d.Day, base, symbols)
 		if errors.Is(err, rates.ErrUnknownCurrency) {
-			out = crossAvailable(d, base, symbols)
+			out = crossAvailable(d.Day, base, symbols)
 		} else if err != nil {
 			s.storeErr(w, err)
 			return
 		}
 		for c, v := range out {
 			series[c] = append(series[c], point{d.Date, v})
-			rows = append(rows, csvRow{d.Date, c, v})
 		}
+		rows = append(rows, dayRows(d.Date, base, out, d.x)...)
+		others = mergeOthers(others, d.x.others(base, out, false))
 	}
 	w.Header().Set("Cache-Control", cacheFor(end, s.now()))
 	if wantCSV(r) {
@@ -169,15 +185,15 @@ func (s *Server) timeseries(w http.ResponseWriter, r *http.Request) {
 		stats[c] = st
 	}
 	writeJSON(w, seriesResponse{
-		Source: Source, Attribution: Attribution, Base: base, Start: start, End: end,
-		Derived: base != "EUR", Series: series, Stats: stats,
+		Source: Source, Attribution: attribution(others), Base: base, Start: start, End: end,
+		Derived: base != "EUR", Series: series, Stats: stats, OtherSources: others,
 	})
 }
 
 // earlierOnly reports whether every requested currency (and the base) is
 // quoted on at least one day of the range, which covers currencies that were
 // retired before the latest publication (e.g. a range in 2005 asking for ROL).
-func earlierOnly(days []dayT, base string, symbols []string) bool {
+func earlierOnly(days []extraDay, base string, symbols []string) bool {
 	need := append([]string{base}, symbols...)
 	for _, c := range need {
 		found := false

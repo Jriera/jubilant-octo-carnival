@@ -11,14 +11,16 @@ import (
 	"github.com/Jriera/jubilant-octo-carnival/internal/rates"
 )
 
-func newServer(secret string) http.Handler {
+func newServer(secret string) http.Handler { return testServer(secret).Handler() }
+
+func testServer(secret string) *Server {
 	s := rates.New()
 	s.Merge([]ecb.Day{
 		{Date: "2026-10-15", Rates: map[string]float64{"USD": 1.16, "JPY": 174.8, "GBP": 0.865}},
 		{Date: "2026-10-16", Rates: map[string]float64{"USD": 1.165, "JPY": 175.2, "GBP": 0.8674}},
 	})
 	now := func() time.Time { return time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC) }
-	return (&Server{Store: s, ProxySecret: secret, Now: now}).Handler()
+	return &Server{Store: s, ProxySecret: secret, Now: now}
 }
 
 func get(t *testing.T, h http.Handler, url string, hdr map[string]string) (int, map[string]any) {

@@ -6,6 +6,9 @@ info:
     Official euro foreign exchange reference rates, published by the European
     Central Bank on TARGET working days around 16:00 CET, with history back to
     1999-01-04. Rates for any base other than EUR are derived cross rates.
+    About 115 currencies the ECB does not quote come from Narodowy Bank Polski
+    tables A (daily) and B (weekly), converted to EUR, and are listed under
+    `other_sources`.
 
     Source: ECB statistics. Reference rates are for information purposes only
     and are not dealing rates.
@@ -217,6 +220,15 @@ components:
           type: object
           additionalProperties: { type: number }
           example: { USD: 1.165, GBP: 0.8674 }
+        other_sources:
+          type: object
+          description: Currencies not quoted by the ECB, with the NBP table used
+          additionalProperties:
+            type: object
+            properties:
+              source: { type: string, example: NBP }
+              table: { type: string, enum: [A, B] }
+              date: { type: string, format: date }
     RateRange:
       type: object
       properties:
@@ -231,6 +243,15 @@ components:
           additionalProperties:
             type: object
             additionalProperties: { type: number }
+        other_sources:
+          type: object
+          description: Currencies not quoted by the ECB, with the NBP table used
+          additionalProperties:
+            type: object
+            properties:
+              source: { type: string, example: NBP }
+              table: { type: string, enum: [A, B] }
+              date: { type: string, format: date }
     Conversion:
       type: object
       properties:
@@ -244,6 +265,15 @@ components:
         result: { type: number }
         derived: { type: boolean }
         stale: { type: boolean }
+        other_sources:
+          type: object
+          description: Currencies not quoted by the ECB, with the NBP table used
+          additionalProperties:
+            type: object
+            properties:
+              source: { type: string, example: NBP }
+              table: { type: string, enum: [A, B] }
+              date: { type: string, format: date }
     TimeSeries:
       type: object
       properties:
@@ -273,6 +303,15 @@ components:
               max: { type: number }
               change: { type: number }
               change_percent: { type: number }
+        other_sources:
+          type: object
+          description: Currencies not quoted by the ECB, with the NBP table used
+          additionalProperties:
+            type: object
+            properties:
+              source: { type: string, example: NBP }
+              table: { type: string, enum: [A, B] }
+              date: { type: string, format: date }
     RatesCSV:
       type: string
       example: |

@@ -69,9 +69,14 @@ func pause(ctx context.Context) error {
 	}
 }
 
-// ---- NBP (Narodowy Bank Polski), table A mid rates, PLN per 1 unit ----
+// ---- NBP (Narodowy Bank Polski) mid rates, PLN per 1 unit ----
+// Table A (~33 major currencies) is published every business day; table B
+// (~115 other currencies) on Wednesdays.
 
-const NBPBaseURL = "https://api.nbp.pl/api/exchangerates/tables/A"
+const (
+	NBPBaseURL  = "https://api.nbp.pl/api/exchangerates/tables/A"
+	NBPBBaseURL = "https://api.nbp.pl/api/exchangerates/tables/B"
+)
 
 type NBP struct {
 	httpClient
@@ -85,7 +90,15 @@ func NewNBP(baseURL string) *NBP {
 	return &NBP{httpClient: newHTTP(), BaseURL: baseURL}
 }
 
-// ParseNBP reads the JSON array the NBP API returns for table A.
+// NewNBPB fetches table B.
+func NewNBPB(baseURL string) *NBP {
+	if baseURL == "" {
+		baseURL = NBPBBaseURL
+	}
+	return NewNBP(baseURL)
+}
+
+// ParseNBP reads the JSON array the NBP API returns for tables A and B.
 func ParseNBP(r io.Reader) ([]Table, error) {
 	var raw []struct {
 		No            string `json:"no"`
@@ -155,7 +168,7 @@ func (n *NBP) History(ctx context.Context, from time.Time) ([]Table, error) {
 
 func (n *NBP) Recent(ctx context.Context) ([]Table, error) {
 	now := n.Now()
-	return n.rangeTables(ctx, now.AddDate(0, 0, -10), now)
+	return n.rangeTables(ctx, now.AddDate(0, 0, -14), now) // covers two table B weeks
 }
 
 // ---- CNB (Česká národní banka) fixing, CZK per Amount units ----

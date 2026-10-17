@@ -200,3 +200,21 @@ func TestRules(t *testing.T) {
 		t.Fatalf("GB next month: %v", err)
 	}
 }
+
+func TestExtra(t *testing.T) {
+	e := &Extra{
+		A: series(Table{Date: "2026-10-14", Rates: map[string]Quote{"EUR": {Value: 4.25, Units: 1}, "UAH": {Value: 0.0875, Units: 1}}}),
+		B: series(Table{Date: "2026-10-14", Rates: map[string]Quote{"AED": {Value: 0.995, Units: 1}, "UAH": {Value: 1, Units: 1}}}),
+	}
+	got := e.On("2026-10-16")
+	// AED per EUR = 4.25 / 0.995; table A wins for UAH.
+	if got["AED"].PerEUR != 4.27136 || got["AED"].Table != "B" || got["UAH"].Table != "A" || got["UAH"].PerEUR != 48.5714 {
+		t.Fatalf("%+v", got)
+	}
+	if len(e.On("2026-10-24")) != 0 {
+		t.Fatal("tables older than MaxExtraAge must be ignored")
+	}
+	if len(e.On("2026-10-13")) != 0 {
+		t.Fatal("nothing before the first table")
+	}
+}
