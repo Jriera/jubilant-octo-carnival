@@ -47,3 +47,16 @@ go test -race ./...
 go run ./cmd/server
 docker build -t exchange-rates-api .
 ```
+
+## Deploy (Railway)
+
+One-time setup in the Railway dashboard:
+
+1. New Project, then "Deploy from GitHub repo", and pick this repository.
+2. In the service settings, pick an EU region and turn on "Wait for CI" so only
+   commits that pass CI are deployed.
+3. Under Variables, add `RAPIDAPI_PROXY_SECRET` from the Rapid provider dashboard.
+4. Under Networking, generate a public domain (or attach your own).
+
+Railway builds the Dockerfile, sets `PORT`, and waits for `/readyz` before
+switching traffic. After that, every merge to `main` deploys automatically.
