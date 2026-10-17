@@ -44,18 +44,36 @@ func TestRange(t *testing.T) {
 	}
 }
 
-func TestMergeSkipsImplausibleDay(t *testing.T) {
-	s := seed()
-	n := s.Merge([]ecb.Day{{Date: "2026-10-19", Rates: map[string]float64{"USD": 2.5, "JPY": 175, "GBP": 0.87}}})
-	if n != 0 {
-		t.Fatalf("accepted %d days, want 0", n)
+func TestMergeSkipsTruncatedDay(t *testing.T) {
+	s := New()
+	full := map[string]float64{"USD": 1.16, "JPY": 174.8, "GBP": 0.865, "CHF": 0.93, "SEK": 11, "NOK": 11.7}
+	s.Merge([]ecb.Day{{Date: "2026-10-16", Rates: full}})
+	if n := s.Merge([]ecb.Day{{Date: "2026-10-19", Rates: map[string]float64{"USD": 1.17, "JPY": 175}}}); n != 0 {
+		t.Fatalf("accepted %d truncated days, want 0", n)
 	}
 	if d, _ := s.Latest(); d.Date != "2026-10-16" {
 		t.Fatalf("latest moved to %s", d.Date)
 	}
-	// A normal next day is accepted.
-	if n := s.Merge([]ecb.Day{{Date: "2026-10-19", Rates: map[string]float64{"USD": 1.17, "JPY": 175, "GBP": 0.87}}}); n != 1 {
-		t.Fatalf("accepted %d, want 1", n)
+}
+
+func TestMergeAcceptsLargeMoves(t *testing.T) {
+	// Regression: the TRL float on 2001-02-22 (+~40%) froze latest at 2001-02-21
+	// because every later day was compared with that one.
+	s := New()
+	n := s.Merge([]ecb.Day{
+		{Date: "2001-02-21", Rates: map[string]float64{"USD": 0.9146, "TRL": 624367}},
+		{Date: "2001-02-22", Rates: map[string]float64{"USD": 0.9188, "TRL": 873519}},
+		{Date: "2026-10-16", Rates: map[string]float64{"USD": 1.165, "TRY": 48.9}},
+	})
+	if n != 3 {
+		t.Fatalf("history load accepted %d of 3 days", n)
+	}
+	if d, _ := s.Latest(); d.Date != "2026-10-16" {
+		t.Fatalf("latest = %s", d.Date)
+	}
+	// A large move in a daily update is accepted too.
+	if n := s.Merge([]ecb.Day{{Date: "2026-10-19", Rates: map[string]float64{"USD": 1.6, "TRY": 49}}}); n != 1 {
+		t.Fatalf("daily update accepted %d, want 1", n)
 	}
 }
 
