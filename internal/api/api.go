@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Jriera/jubilant-octo-carnival/internal/ecb"
+	"github.com/Jriera/jubilant-octo-carnival/internal/official"
 	"github.com/Jriera/jubilant-octo-carnival/internal/rates"
 )
 
@@ -28,8 +29,9 @@ const (
 
 type Server struct {
 	Store       *rates.Store
-	ProxySecret string           // when set, requests must carry X-RapidAPI-Proxy-Secret
-	Now         func() time.Time // for tests
+	Tax         []*official.Country // tax and invoicing rules; optional
+	ProxySecret string              // when set, requests must carry X-RapidAPI-Proxy-Secret
+	Now         func() time.Time    // for tests
 }
 
 func (s *Server) Handler() http.Handler {
@@ -41,6 +43,8 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /v1/history", s.auth(s.history))
 	mux.Handle("GET /v1/timeseries", s.auth(s.timeseries))
 	mux.Handle("GET /v1/currencies", s.auth(s.currencies))
+	mux.Handle("GET /v1/tax-rates", s.auth(s.taxRate))
+	mux.Handle("GET /v1/tax-rates/countries", s.auth(s.taxCountries))
 	return mux
 }
 

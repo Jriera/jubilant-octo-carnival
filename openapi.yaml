@@ -93,6 +93,68 @@ paths:
             text/csv:
               schema: { $ref: '#/components/schemas/RatesCSV' }
         '400': { $ref: '#/components/responses/Error' }
+  /v1/tax-rates:
+    get:
+      summary: Official rate required for tax and invoicing on a date
+      description: |
+        Applies the country's rule for which official table and which day to
+        use, and returns the rate with the table number and legal basis to put
+        on an invoice or in an audit file.
+
+        | Country | Source | Rule (general case) |
+        | --- | --- | --- |
+        | PL | NBP table A | Last business day before the tax point; before the invoice date if the invoice comes first (art. 31a VAT Act) |
+        | CZ | CNB fixing | Fixing valid on the day the tax obligation arises (§ 4(5) VAT Act) |
+        | HU | MNB | Rate valid on the day of fulfilment, for taxpayers who chose MNB rates (§ 80 VAT Act) |
+        | GB | HMRC monthly | Monthly rate for the month of the time of supply (VAT Notice 700, 7.6) |
+
+        `rate` is always local currency per 1 unit of `currency`. `published`
+        shows the value exactly as the authority quotes it, and `result`
+        converts `amount` using that quote. `provisional` is true when the
+        table the rule needs may not be published yet; ask again later.
+      parameters:
+        - { name: country, in: query, required: true, schema: { type: string, enum: [PL, CZ, HU, GB], example: PL } }
+        - { name: currency, in: query, required: true, description: Foreign currency of the document, schema: { type: string, example: USD } }
+        - { name: date, in: query, required: true, description: Tax point (date of supply), schema: { type: string, format: date } }
+        - { name: invoice_date, in: query, description: Invoice issue date, where the rule depends on it (PL), schema: { type: string, format: date } }
+        - { name: amount, in: query, description: Amount in `currency` to convert, schema: { type: number, example: 1250 } }
+      responses:
+        '200':
+          description: The applicable rate
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaxRate' }
+        '400': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+  /v1/tax-rates/countries:
+    get:
+      summary: Supported countries, their rules and loaded history
+      responses:
+        '200':
+          description: Countries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  disclaimer: { type: string }
+                  countries:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        country: { type: string, example: PL }
+                        name: { type: string }
+                        local_currency: { type: string, example: PLN }
+                        source: { type: string, example: NBP }
+                        source_name: { type: string }
+                        rule: { type: string }
+                        legal_basis: { type: string }
+                        from: { type: string, format: date }
+                        to: { type: string, format: date }
+                        currencies: { type: array, items: { type: string } }
+                        loaded: { type: boolean }
   /v1/currencies:
     get:
       summary: Supported currencies
@@ -216,3 +278,29 @@ components:
       example: |
         date,base,currency,rate,derived,source
         2026-10-16,EUR,USD,1.165,false,ECB
+    TaxRate:
+      type: object
+      properties:
+        country: { type: string, example: PL }
+        local_currency: { type: string, example: PLN }
+        currency: { type: string, example: USD }
+        date: { type: string, format: date, description: Tax point as requested }
+        invoice_date: { type: string, format: date }
+        applied_date: { type: string, format: date, description: Date the rule was applied to }
+        rate: { type: number, example: 3.6512, description: Local currency per 1 unit of currency }
+        published:
+          type: object
+          properties:
+            value: { type: number, example: 3.6512 }
+            quote: { type: string, example: PLN per 1 USD }
+        amount: { type: number }
+        result: { type: number, description: amount converted into local currency }
+        source: { type: string, example: NBP }
+        table: { type: string, example: 199/A/NBP/2026, description: The authority's table number }
+        rate_date: { type: string, format: date, description: Publication date of the table used }
+        valid_to: { type: string, format: date, description: End of the period, for monthly tables }
+        provisional: { type: boolean }
+        rule: { type: string }
+        legal_basis: { type: string }
+        attribution: { type: string }
+        disclaimer: { type: string }
