@@ -298,7 +298,10 @@ func (c *CNB) Recent(ctx context.Context) ([]Table, error) {
 
 // ---- MNB (Magyar Nemzeti Bank) official rates, HUF per unit units ----
 
-const MNBURL = "https://www.mnb.hu/arfolyamok.asmx"
+// MNBURL is plain HTTP on purpose: since mid-2026 the HTTPS address answers
+// SOAP calls with an empty 404 (bot protection), while the WSDL names this
+// HTTP address as the service endpoint. The rates are public data.
+const MNBURL = "http://www.mnb.hu/arfolyamok.asmx"
 
 type MNB struct {
 	httpClient
