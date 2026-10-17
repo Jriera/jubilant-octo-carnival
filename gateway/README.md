@@ -32,6 +32,10 @@ When `openapi.yaml` gains an endpoint, add it to `config/routes.oas.json` too
    this GitHub repo with `gateway` as the project folder, or create a Zuplo
    API key and add it as the `ZUPLO_API_KEY` secret in GitHub so
    `.github/workflows/deploy-gateway.yml` deploys on every push to `main`.
+   The deploy needs the project name: it uses `exchange-rates` unless you set
+   a `ZUPLO_PROJECT` repository variable (Settings → Secrets and variables →
+   Actions → Variables). If your Zuplo login has more than one account, also
+   set `ZUPLO_ACCOUNT`.
 2. **Environment variables** (Zuplo Portal → Settings → Environment Variables):
    - `BACKEND_URL` = `https://jubilant-octo-carnival-production.up.railway.app`
    - `GATEWAY_SECRET` = a long random string, marked secret.
