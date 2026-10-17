@@ -13,12 +13,15 @@ Source: ECB statistics. Reference rates are for information purposes only.
 | `GET /v1/convert?from=USD&to=CHF&amount=250` | Converted amount and the rate used (`date=` optional) |
 | `GET /v1/history?date=2024-03-01` | Rates on a date (closest earlier publication) |
 | `GET /v1/history?start=2024-01-01&end=2024-03-31` | Every publication in a range, up to 366 days |
+| `GET /v1/timeseries?start=2024-01-01&end=2024-12-31&symbols=USD` | One series per currency with start, end, min, max and change, up to 10 years |
 | `GET /v1/currencies` | Supported currency codes and names |
 | `GET /healthz`, `GET /readyz` | Liveness, and readiness once rates are loaded |
 
 Every response carries `source`, `attribution` and the publication `date`.
 Rates for a base other than EUR are cross rates computed from the ECB's EUR
-rates and are marked `"derived": true`. Full spec: [openapi.yaml](openapi.yaml).
+rates and are marked `"derived": true`. Add `format=csv` (or send
+`Accept: text/csv`) to `latest`, `history` or `timeseries` for a CSV download
+with one rate per line. Full spec: [openapi.yaml](openapi.yaml).
 
 ## How it works
 

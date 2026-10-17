@@ -39,6 +39,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /v1/latest", s.auth(s.latest))
 	mux.Handle("GET /v1/convert", s.auth(s.convert))
 	mux.Handle("GET /v1/history", s.auth(s.history))
+	mux.Handle("GET /v1/timeseries", s.auth(s.timeseries))
 	mux.Handle("GET /v1/currencies", s.auth(s.currencies))
 	return mux
 }
@@ -83,6 +84,9 @@ type ratesResponse struct {
 }
 
 func (s *Server) latest(w http.ResponseWriter, r *http.Request) {
+	if !validFormat(w, r) {
+		return
+	}
 	base, symbols, ok := parseBaseSymbols(w, r)
 	if !ok {
 		return
@@ -98,6 +102,10 @@ func (s *Server) latest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Cache-Control", "public, max-age=60")
+	if wantCSV(r) {
+		writeCSV(w, "latest_"+base+"_"+day.Date+".csv", base, base != "EUR", dayRows(day.Date, out))
+		return
+	}
 	writeJSON(w, ratesResponse{
 		Source: Source, Attribution: Attribution, Base: base, Date: day.Date,
 		Derived: base != "EUR", Stale: s.isStale(day), Rates: out,
@@ -178,6 +186,9 @@ type rangeResponse struct {
 }
 
 func (s *Server) history(w http.ResponseWriter, r *http.Request) {
+	if !validFormat(w, r) {
+		return
+	}
 	base, symbols, ok := parseBaseSymbols(w, r)
 	if !ok {
 		return
@@ -199,6 +210,10 @@ func (s *Server) history(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("Cache-Control", cacheFor(d, s.now()))
+		if wantCSV(r) {
+			writeCSV(w, "history_"+base+"_"+day.Date+".csv", base, base != "EUR", dayRows(day.Date, out))
+			return
+		}
 		writeJSON(w, ratesResponse{
 			Source: Source, Attribution: Attribution, Base: base, Date: day.Date,
 			RequestedDate: d, Derived: base != "EUR", Rates: out,
@@ -238,6 +253,14 @@ func (s *Server) history(w http.ResponseWriter, r *http.Request) {
 		resp.Rates[d.Date] = out
 	}
 	w.Header().Set("Cache-Control", cacheFor(end, s.now()))
+	if wantCSV(r) {
+		var rows []csvRow
+		for date, rs := range resp.Rates {
+			rows = append(rows, dayRows(date, rs)...)
+		}
+		writeCSV(w, "history_"+base+"_"+start+"_"+end+".csv", base, resp.Derived, rows)
+		return
+	}
 	writeJSON(w, resp)
 }
 

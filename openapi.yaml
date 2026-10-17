@@ -18,12 +18,15 @@ paths:
       parameters:
         - $ref: '#/components/parameters/base'
         - $ref: '#/components/parameters/symbols'
+        - $ref: '#/components/parameters/format'
       responses:
         '200':
           description: Latest published rates
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Rates' }
+            text/csv:
+              schema: { $ref: '#/components/schemas/RatesCSV' }
         '400': { $ref: '#/components/responses/Error' }
         '503': { $ref: '#/components/responses/Error' }
   /v1/convert:
@@ -54,6 +57,7 @@ paths:
         - { name: end, in: query, schema: { type: string, format: date } }
         - $ref: '#/components/parameters/base'
         - $ref: '#/components/parameters/symbols'
+        - $ref: '#/components/parameters/format'
       responses:
         '200':
           description: Historical rates
@@ -63,8 +67,32 @@ paths:
                 oneOf:
                   - $ref: '#/components/schemas/Rates'
                   - $ref: '#/components/schemas/RateRange'
+            text/csv:
+              schema: { $ref: '#/components/schemas/RatesCSV' }
         '400': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
+  /v1/timeseries:
+    get:
+      summary: One ordered series per currency, with range statistics
+      description: |
+        Every publication between `start` and `end` (up to 10 years), as one
+        array per currency, plus start, end, min, max and change over the range.
+        Days without a publication (weekends, holidays) are not filled in.
+      parameters:
+        - { name: start, in: query, required: true, schema: { type: string, format: date } }
+        - { name: end, in: query, required: true, schema: { type: string, format: date } }
+        - $ref: '#/components/parameters/base'
+        - $ref: '#/components/parameters/symbols'
+        - $ref: '#/components/parameters/format'
+      responses:
+        '200':
+          description: Time series
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TimeSeries' }
+            text/csv:
+              schema: { $ref: '#/components/schemas/RatesCSV' }
+        '400': { $ref: '#/components/responses/Error' }
   /v1/currencies:
     get:
       summary: Supported currencies
@@ -96,6 +124,13 @@ components:
       in: query
       description: Comma-separated currency codes; all when omitted
       schema: { type: string, example: 'USD,GBP,JPY' }
+    format:
+      name: format
+      in: query
+      description: |
+        `csv` returns one rate per line (date, base, currency, rate, derived,
+        source) for spreadsheets. Sending `Accept: text/csv` does the same.
+      schema: { type: string, enum: [json, csv], default: json }
   responses:
     Error:
       description: Error
@@ -147,3 +182,37 @@ components:
         result: { type: number }
         derived: { type: boolean }
         stale: { type: boolean }
+    TimeSeries:
+      type: object
+      properties:
+        source: { type: string }
+        attribution: { type: string }
+        base: { type: string }
+        start: { type: string, format: date }
+        end: { type: string, format: date }
+        derived: { type: boolean }
+        series:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: object
+              properties:
+                date: { type: string, format: date }
+                rate: { type: number }
+        stats:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              start: { type: number }
+              end: { type: number }
+              min: { type: number }
+              max: { type: number }
+              change: { type: number }
+              change_percent: { type: number }
+    RatesCSV:
+      type: string
+      example: |
+        date,base,currency,rate,derived,source
+        2026-10-16,EUR,USD,1.165,false,ECB
