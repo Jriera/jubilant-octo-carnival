@@ -47,3 +47,17 @@ go test -race ./...
 go run ./cmd/server
 docker build -t exchange-rates-api .
 ```
+
+## Deploy (Fly.io)
+
+One-time setup:
+
+```sh
+fly auth login
+fly apps create exchange-rates-api   # pick another name if taken, and update fly.toml
+fly secrets set RAPIDAPI_PROXY_SECRET=...   # from the Rapid provider dashboard
+fly tokens create deploy -a exchange-rates-api
+```
+
+Add the deploy token as the `FLY_API_TOKEN` repository secret on GitHub.
+After that, every push to `main` that passes CI deploys automatically.
