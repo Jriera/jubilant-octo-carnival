@@ -24,8 +24,8 @@ rates and are marked `"derived": true`. Full spec: [openapi.yaml](openapi.yaml).
 
 On start the server downloads the ECB's full history file once and keeps all
 of it in memory (a few MB). It then polls the small daily file every 10
-minutes and adds new publications, rejecting days with missing currencies or
-moves over 25%. Requests never wait on the ECB, so each replica answers from
+minutes and adds new publications, skipping a day that looks truncated (more
+than three currencies missing). Requests never wait on the ECB, so each replica answers from
 memory and replicas need no shared database.
 
 If the ECB has not published anything for more than four days, responses

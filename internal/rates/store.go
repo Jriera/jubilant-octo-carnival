@@ -23,9 +23,9 @@ var (
 	ErrUnknownCurrency = errors.New("unknown currency")
 )
 
-// MaxJump is the largest day-on-day change in a rate that is accepted for a
-// new latest day. Larger moves are treated as bad data and the day is skipped.
-const MaxJump = 0.25
+// MaxMissing is how many currencies a new latest day may lack compared with
+// the previous one before the day is treated as a truncated file and skipped.
+const MaxMissing = 3
 
 type snapshot struct {
 	days []ecb.Day // sorted by date ascending; EUR=1 added to every day
@@ -53,17 +53,21 @@ func (s *Store) Merge(in []ecb.Day) int {
 	for _, d := range cur {
 		byDate[d.Date] = d
 	}
+	// Only days added on top of already loaded data are checked. The initial
+	// history load is trusted as published: it legitimately contains currencies
+	// leaving the euro area and devaluations such as TRL in February 2001.
 	var latest *ecb.Day
 	if len(cur) > 0 {
 		latest = &cur[len(cur)-1]
 	}
+	check := latest != nil
 
 	sorted := append([]ecb.Day(nil), in...)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Date < sorted[j].Date })
 
 	accepted := 0
 	for _, d := range sorted {
-		if latest != nil && d.Date > latest.Date {
+		if check && d.Date > latest.Date {
 			if err := plausible(*latest, d); err != nil {
 				slog.Warn("skipping implausible day", "date", d.Date, "err", err)
 				continue
@@ -90,14 +94,12 @@ func (s *Store) Merge(in []ecb.Day) int {
 	return accepted
 }
 
+// plausible rejects a new day that looks like a truncated file. Large rate
+// moves are not rejected: they happen (devaluations), and rejecting one would
+// freeze every later day too, since each is compared with the last accepted day.
 func plausible(prev, next ecb.Day) error {
-	if len(next.Rates) < len(prev.Rates)-1-3 { // prev includes EUR; allow a few to drop out
+	if len(next.Rates) < len(prev.Rates)-1-MaxMissing { // prev includes EUR
 		return fmt.Errorf("only %d currencies, previous day had %d", len(next.Rates), len(prev.Rates)-1)
-	}
-	for c, v := range next.Rates {
-		if p, ok := prev.Rates[c]; ok && math.Abs(v/p-1) > MaxJump {
-			return fmt.Errorf("%s moved from %v to %v", c, p, v)
-		}
 	}
 	return nil
 }
