@@ -6,6 +6,9 @@ info:
     Official euro foreign exchange reference rates, published by the European
     Central Bank on TARGET working days around 16:00 CET, with history back to
     1999-01-04. Rates for any base other than EUR are derived cross rates.
+    About 115 currencies the ECB does not quote come from Narodowy Bank Polski
+    tables A (daily) and B (weekly), converted to EUR, and are listed under
+    `other_sources`.
 
     Source: ECB statistics. Reference rates are for information purposes only
     and are not dealing rates.
@@ -18,12 +21,15 @@ paths:
       parameters:
         - $ref: '#/components/parameters/base'
         - $ref: '#/components/parameters/symbols'
+        - $ref: '#/components/parameters/format'
       responses:
         '200':
           description: Latest published rates
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Rates' }
+            text/csv:
+              schema: { $ref: '#/components/schemas/RatesCSV' }
         '400': { $ref: '#/components/responses/Error' }
         '503': { $ref: '#/components/responses/Error' }
   /v1/convert:
@@ -54,6 +60,7 @@ paths:
         - { name: end, in: query, schema: { type: string, format: date } }
         - $ref: '#/components/parameters/base'
         - $ref: '#/components/parameters/symbols'
+        - $ref: '#/components/parameters/format'
       responses:
         '200':
           description: Historical rates
@@ -63,8 +70,94 @@ paths:
                 oneOf:
                   - $ref: '#/components/schemas/Rates'
                   - $ref: '#/components/schemas/RateRange'
+            text/csv:
+              schema: { $ref: '#/components/schemas/RatesCSV' }
         '400': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
+  /v1/timeseries:
+    get:
+      summary: One ordered series per currency, with range statistics
+      description: |
+        Every publication between `start` and `end` (up to 10 years), as one
+        array per currency, plus start, end, min, max and change over the range.
+        Days without a publication (weekends, holidays) are not filled in.
+      parameters:
+        - { name: start, in: query, required: true, schema: { type: string, format: date } }
+        - { name: end, in: query, required: true, schema: { type: string, format: date } }
+        - $ref: '#/components/parameters/base'
+        - $ref: '#/components/parameters/symbols'
+        - $ref: '#/components/parameters/format'
+      responses:
+        '200':
+          description: Time series
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TimeSeries' }
+            text/csv:
+              schema: { $ref: '#/components/schemas/RatesCSV' }
+        '400': { $ref: '#/components/responses/Error' }
+  /v1/tax-rates:
+    get:
+      summary: Official rate required for tax and invoicing on a date
+      description: |
+        Applies the country's rule for which official table and which day to
+        use, and returns the rate with the table number and legal basis to put
+        on an invoice or in an audit file.
+
+        | Country | Source | Rule (general case) |
+        | --- | --- | --- |
+        | PL | NBP table A | Last business day before the tax point; before the invoice date if the invoice comes first (art. 31a VAT Act) |
+        | CZ | CNB fixing | Fixing valid on the day the tax obligation arises (§ 4(5) VAT Act) |
+        | HU | MNB | Rate valid on the day of fulfilment, for taxpayers who chose MNB rates (§ 80 VAT Act) |
+        | GB | HMRC monthly | Monthly rate for the month of the time of supply (VAT Notice 700, 7.6) |
+
+        `rate` is always local currency per 1 unit of `currency`. `published`
+        shows the value exactly as the authority quotes it, and `result`
+        converts `amount` using that quote. `provisional` is true when the
+        table the rule needs may not be published yet; ask again later.
+      parameters:
+        - { name: country, in: query, required: true, schema: { type: string, enum: [PL, CZ, HU, GB], example: PL } }
+        - { name: currency, in: query, required: true, description: Foreign currency of the document, schema: { type: string, example: USD } }
+        - { name: date, in: query, required: true, description: Tax point (date of supply), schema: { type: string, format: date } }
+        - { name: invoice_date, in: query, description: Invoice issue date, where the rule depends on it (PL), schema: { type: string, format: date } }
+        - { name: amount, in: query, description: Amount in `currency` to convert, schema: { type: number, example: 1250 } }
+      responses:
+        '200':
+          description: The applicable rate
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaxRate' }
+        '400': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+  /v1/tax-rates/countries:
+    get:
+      summary: Supported countries, their rules and loaded history
+      responses:
+        '200':
+          description: Countries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  disclaimer: { type: string }
+                  countries:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        country: { type: string, example: PL }
+                        name: { type: string }
+                        local_currency: { type: string, example: PLN }
+                        source: { type: string, example: NBP }
+                        source_name: { type: string }
+                        rule: { type: string }
+                        legal_basis: { type: string }
+                        from: { type: string, format: date }
+                        to: { type: string, format: date }
+                        currencies: { type: array, items: { type: string } }
+                        loaded: { type: boolean }
   /v1/currencies:
     get:
       summary: Supported currencies
@@ -96,6 +189,13 @@ components:
       in: query
       description: Comma-separated currency codes; all when omitted
       schema: { type: string, example: 'USD,GBP,JPY' }
+    format:
+      name: format
+      in: query
+      description: |
+        `csv` returns one rate per line (date, base, currency, rate, derived,
+        source) for spreadsheets. Sending `Accept: text/csv` does the same.
+      schema: { type: string, enum: [json, csv], default: json }
   responses:
     Error:
       description: Error
@@ -120,6 +220,15 @@ components:
           type: object
           additionalProperties: { type: number }
           example: { USD: 1.165, GBP: 0.8674 }
+        other_sources:
+          type: object
+          description: Currencies not quoted by the ECB, with the NBP table used
+          additionalProperties:
+            type: object
+            properties:
+              source: { type: string, example: NBP }
+              table: { type: string, enum: [A, B] }
+              date: { type: string, format: date }
     RateRange:
       type: object
       properties:
@@ -134,6 +243,15 @@ components:
           additionalProperties:
             type: object
             additionalProperties: { type: number }
+        other_sources:
+          type: object
+          description: Currencies not quoted by the ECB, with the NBP table used
+          additionalProperties:
+            type: object
+            properties:
+              source: { type: string, example: NBP }
+              table: { type: string, enum: [A, B] }
+              date: { type: string, format: date }
     Conversion:
       type: object
       properties:
@@ -147,3 +265,81 @@ components:
         result: { type: number }
         derived: { type: boolean }
         stale: { type: boolean }
+        other_sources:
+          type: object
+          description: Currencies not quoted by the ECB, with the NBP table used
+          additionalProperties:
+            type: object
+            properties:
+              source: { type: string, example: NBP }
+              table: { type: string, enum: [A, B] }
+              date: { type: string, format: date }
+    TimeSeries:
+      type: object
+      properties:
+        source: { type: string }
+        attribution: { type: string }
+        base: { type: string }
+        start: { type: string, format: date }
+        end: { type: string, format: date }
+        derived: { type: boolean }
+        series:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: object
+              properties:
+                date: { type: string, format: date }
+                rate: { type: number }
+        stats:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              start: { type: number }
+              end: { type: number }
+              min: { type: number }
+              max: { type: number }
+              change: { type: number }
+              change_percent: { type: number }
+        other_sources:
+          type: object
+          description: Currencies not quoted by the ECB, with the NBP table used
+          additionalProperties:
+            type: object
+            properties:
+              source: { type: string, example: NBP }
+              table: { type: string, enum: [A, B] }
+              date: { type: string, format: date }
+    RatesCSV:
+      type: string
+      example: |
+        date,base,currency,rate,derived,source
+        2026-10-16,EUR,USD,1.165,false,ECB
+    TaxRate:
+      type: object
+      properties:
+        country: { type: string, example: PL }
+        local_currency: { type: string, example: PLN }
+        currency: { type: string, example: USD }
+        date: { type: string, format: date, description: Tax point as requested }
+        invoice_date: { type: string, format: date }
+        applied_date: { type: string, format: date, description: Date the rule was applied to }
+        rate: { type: number, example: 3.6512, description: Local currency per 1 unit of currency }
+        published:
+          type: object
+          properties:
+            value: { type: number, example: 3.6512 }
+            quote: { type: string, example: PLN per 1 USD }
+        amount: { type: number }
+        result: { type: number, description: amount converted into local currency }
+        source: { type: string, example: NBP }
+        table: { type: string, example: 199/A/NBP/2026, description: The authority's table number }
+        rate_date: { type: string, format: date, description: Publication date of the table used }
+        valid_to: { type: string, format: date, description: End of the period, for monthly tables }
+        provisional: { type: boolean }
+        rule: { type: string }
+        legal_basis: { type: string }
+        attribution: { type: string }
+        disclaimer: { type: string }
