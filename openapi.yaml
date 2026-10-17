@@ -1,0 +1,149 @@
+openapi: 3.0.3
+info:
+  title: Exchange Rates API
+  version: 1.0.0
+  description: |
+    Official euro foreign exchange reference rates, published by the European
+    Central Bank on TARGET working days around 16:00 CET, with history back to
+    1999-01-04. Rates for any base other than EUR are derived cross rates.
+
+    Source: ECB statistics. Reference rates are for information purposes only
+    and are not dealing rates.
+servers:
+  - url: https://api.example.com
+paths:
+  /v1/latest:
+    get:
+      summary: Latest rates
+      parameters:
+        - $ref: '#/components/parameters/base'
+        - $ref: '#/components/parameters/symbols'
+      responses:
+        '200':
+          description: Latest published rates
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Rates' }
+        '400': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+  /v1/convert:
+    get:
+      summary: Convert an amount
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: string, example: USD } }
+        - { name: to, in: query, required: true, schema: { type: string, example: CHF } }
+        - { name: amount, in: query, schema: { type: number, default: 1, example: 250 } }
+        - { name: date, in: query, description: Use rates from this date (YYYY-MM-DD), schema: { type: string, format: date } }
+      responses:
+        '200':
+          description: Converted amount
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Conversion' }
+        '400': { $ref: '#/components/responses/Error' }
+  /v1/history:
+    get:
+      summary: Rates on a date, or across a range of up to 366 days
+      description: |
+        Pass `date` for one day. Weekends and holidays return the closest
+        earlier publication; `date` in the response shows which. Or pass
+        `start` and `end` for every publication in between.
+      parameters:
+        - { name: date, in: query, schema: { type: string, format: date } }
+        - { name: start, in: query, schema: { type: string, format: date } }
+        - { name: end, in: query, schema: { type: string, format: date } }
+        - $ref: '#/components/parameters/base'
+        - $ref: '#/components/parameters/symbols'
+      responses:
+        '200':
+          description: Historical rates
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/Rates'
+                  - $ref: '#/components/schemas/RateRange'
+        '400': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+  /v1/currencies:
+    get:
+      summary: Supported currencies
+      responses:
+        '200':
+          description: Currencies quoted on the latest publication date
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  date: { type: string, format: date }
+                  currencies:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        code: { type: string, example: USD }
+                        name: { type: string, example: US dollar }
+                        source: { type: string, example: ECB }
+components:
+  parameters:
+    base:
+      name: base
+      in: query
+      schema: { type: string, default: EUR, example: USD }
+    symbols:
+      name: symbols
+      in: query
+      description: Comma-separated currency codes; all when omitted
+      schema: { type: string, example: 'USD,GBP,JPY' }
+  responses:
+    Error:
+      description: Error
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error: { type: string }
+  schemas:
+    Rates:
+      type: object
+      properties:
+        source: { type: string, example: ECB }
+        attribution: { type: string }
+        base: { type: string, example: EUR }
+        date: { type: string, format: date, description: Publication date of the rates }
+        requested_date: { type: string, format: date }
+        derived: { type: boolean, description: True when rates are computed cross rates }
+        stale: { type: boolean, description: True when no new rates for over 4 days }
+        rates:
+          type: object
+          additionalProperties: { type: number }
+          example: { USD: 1.165, GBP: 0.8674 }
+    RateRange:
+      type: object
+      properties:
+        source: { type: string }
+        attribution: { type: string }
+        base: { type: string }
+        start: { type: string, format: date }
+        end: { type: string, format: date }
+        derived: { type: boolean }
+        rates:
+          type: object
+          additionalProperties:
+            type: object
+            additionalProperties: { type: number }
+    Conversion:
+      type: object
+      properties:
+        source: { type: string }
+        attribution: { type: string }
+        date: { type: string, format: date }
+        from: { type: string }
+        to: { type: string }
+        amount: { type: number }
+        rate: { type: number }
+        result: { type: number }
+        derived: { type: boolean }
+        stale: { type: boolean }
