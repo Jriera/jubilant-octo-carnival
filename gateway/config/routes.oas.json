@@ -1,0 +1,1130 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Exchange Rates",
+    "version": "1.0.0",
+    "description": "Official euro foreign exchange reference rates, published by the European\nCentral Bank on TARGET working days around 16:00 CET, with history back to\n1999-01-04. Rates for any base other than EUR are derived cross rates.\nAbout 115 currencies the ECB does not quote come from Narodowy Bank Polski\ntables A (daily) and B (weekly), converted to EUR, and are listed under\n`other_sources`.\n\nSource: ECB statistics. Reference rates are for information purposes only\nand are not dealing rates.\n"
+  },
+  "paths": {
+    "/v1/latest": {
+      "get": {
+        "operationId": "getLatestRates",
+        "summary": "Latest rates",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/base"
+          },
+          {
+            "$ref": "#/components/parameters/symbols"
+          },
+          {
+            "$ref": "#/components/parameters/format"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Latest published rates",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Rates"
+                }
+              },
+              "text/csv": {
+                "schema": {
+                  "$ref": "#/components/schemas/RatesCSV"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "tags": [
+          "Rates"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "x-zuplo-route": {
+          "corsPolicy": "anything-goes",
+          "handler": {
+            "export": "urlForwardHandler",
+            "module": "$import(@zuplo/runtime)",
+            "options": {
+              "baseUrl": "${env.BACKEND_URL}"
+            }
+          },
+          "policies": {
+            "inbound": [
+              "monetization",
+              "csv-gate",
+              "upstream"
+            ]
+          },
+          "label": "Latest rates"
+        },
+        "description": "Latest official reference rates (ECB, plus NBP for currencies the ECB doesn't quote). Choose a `base` currency (default EUR) and optional comma-separated `symbols`."
+      }
+    },
+    "/v1/convert": {
+      "get": {
+        "operationId": "convertAmount",
+        "summary": "Convert an amount",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "USD"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "CHF"
+            }
+          },
+          {
+            "name": "amount",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "default": 1,
+              "example": 250
+            }
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "description": "Use rates from this date (YYYY-MM-DD)",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Converted amount",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Conversion"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "tags": [
+          "Rates"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "x-zuplo-route": {
+          "corsPolicy": "anything-goes",
+          "handler": {
+            "export": "urlForwardHandler",
+            "module": "$import(@zuplo/runtime)",
+            "options": {
+              "baseUrl": "${env.BACKEND_URL}"
+            }
+          },
+          "policies": {
+            "inbound": [
+              "monetization",
+              "upstream"
+            ]
+          },
+          "label": "Convert an amount"
+        },
+        "description": "Convert `amount` from one currency to another at the latest official reference rate, or at the rate on `date` (YYYY-MM-DD)."
+      }
+    },
+    "/v1/history": {
+      "get": {
+        "operationId": "getHistoricalRates",
+        "summary": "Rates on a date, or across a range of up to 366 days",
+        "description": "Pass `date` for one day. Weekends and holidays return the closest\nearlier publication; `date` in the response shows which. Or pass\n`start` and `end` for every publication in between.\n",
+        "parameters": [
+          {
+            "name": "date",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "start",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/base"
+          },
+          {
+            "$ref": "#/components/parameters/symbols"
+          },
+          {
+            "$ref": "#/components/parameters/format"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Historical rates",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/Rates"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RateRange"
+                    }
+                  ]
+                }
+              },
+              "text/csv": {
+                "schema": {
+                  "$ref": "#/components/schemas/RatesCSV"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "tags": [
+          "Rates"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "x-zuplo-route": {
+          "corsPolicy": "anything-goes",
+          "handler": {
+            "export": "urlForwardHandler",
+            "module": "$import(@zuplo/runtime)",
+            "options": {
+              "baseUrl": "${env.BACKEND_URL}"
+            }
+          },
+          "policies": {
+            "inbound": [
+              "monetization",
+              "csv-gate",
+              "upstream"
+            ]
+          },
+          "label": "Rates on a date, or across a range of up to 366 days"
+        }
+      }
+    },
+    "/v1/timeseries": {
+      "get": {
+        "operationId": "getTimeSeries",
+        "summary": "One ordered series per currency, with range statistics",
+        "description": "Every publication between `start` and `end` (up to 10 years), as one\narray per currency, plus start, end, min, max and change over the range.\nDays without a publication (weekends, holidays) are not filled in.\n",
+        "parameters": [
+          {
+            "name": "start",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/base"
+          },
+          {
+            "$ref": "#/components/parameters/symbols"
+          },
+          {
+            "$ref": "#/components/parameters/format"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Time series",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimeSeries"
+                }
+              },
+              "text/csv": {
+                "schema": {
+                  "$ref": "#/components/schemas/RatesCSV"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "tags": [
+          "Rates"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "x-zuplo-route": {
+          "corsPolicy": "anything-goes",
+          "handler": {
+            "export": "urlForwardHandler",
+            "module": "$import(@zuplo/runtime)",
+            "options": {
+              "baseUrl": "${env.BACKEND_URL}"
+            }
+          },
+          "policies": {
+            "inbound": [
+              "monetization-timeseries",
+              "csv-gate",
+              "upstream"
+            ]
+          },
+          "label": "One ordered series per currency, with range statistics"
+        }
+      }
+    },
+    "/v1/tax-rates": {
+      "get": {
+        "operationId": "getTaxRate",
+        "summary": "Official rate required for tax and invoicing on a date",
+        "description": "Applies the country's rule for which official table and which day to\nuse, and returns the rate with the table number and legal basis to put\non an invoice or in an audit file.\n\n| Country | Source | Rule (general case) |\n| --- | --- | --- |\n| PL | NBP table A | Last business day before the tax point; before the invoice date if the invoice comes first (art. 31a VAT Act) |\n| CZ | CNB fixing | Fixing valid on the day the tax obligation arises (§ 4(5) VAT Act) |\n| HU | MNB | Rate valid on the day of fulfilment, for taxpayers who chose MNB rates (§ 80 VAT Act) |\n| GB | HMRC monthly | Monthly rate for the month of the time of supply (VAT Notice 700, 7.6) |\n\n`rate` is always local currency per 1 unit of `currency`. `published`\nshows the value exactly as the authority quotes it, and `result`\nconverts `amount` using that quote. `provisional` is true when the\ntable the rule needs may not be published yet; ask again later.\n",
+        "parameters": [
+          {
+            "name": "country",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "PL",
+                "CZ",
+                "HU",
+                "GB"
+              ],
+              "example": "PL"
+            }
+          },
+          {
+            "name": "currency",
+            "in": "query",
+            "required": true,
+            "description": "Foreign currency of the document",
+            "schema": {
+              "type": "string",
+              "example": "USD"
+            }
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "required": true,
+            "description": "Tax point (date of supply)",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "invoice_date",
+            "in": "query",
+            "description": "Invoice issue date",
+            "where the rule depends on it (PL)": null,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "amount",
+            "in": "query",
+            "description": "Amount in `currency` to convert",
+            "schema": {
+              "type": "number",
+              "example": 1250
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The applicable rate",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaxRate"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "tags": [
+          "Tax and invoicing"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "x-zuplo-route": {
+          "corsPolicy": "anything-goes",
+          "handler": {
+            "export": "urlForwardHandler",
+            "module": "$import(@zuplo/runtime)",
+            "options": {
+              "baseUrl": "${env.BACKEND_URL}"
+            }
+          },
+          "policies": {
+            "inbound": [
+              "monetization-tax-rates",
+              "upstream"
+            ]
+          },
+          "label": "Official rate required for tax and invoicing on a date"
+        }
+      }
+    },
+    "/v1/tax-rates/countries": {
+      "get": {
+        "operationId": "listTaxCountries",
+        "summary": "Supported countries, their rules and loaded history",
+        "responses": {
+          "200": {
+            "description": "Countries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "disclaimer": {
+                      "type": "string"
+                    },
+                    "countries": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "country": {
+                            "type": "string",
+                            "example": "PL"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "local_currency": {
+                            "type": "string",
+                            "example": "PLN"
+                          },
+                          "source": {
+                            "type": "string",
+                            "example": "NBP"
+                          },
+                          "source_name": {
+                            "type": "string"
+                          },
+                          "rule": {
+                            "type": "string"
+                          },
+                          "legal_basis": {
+                            "type": "string"
+                          },
+                          "from": {
+                            "type": "string",
+                            "format": "date"
+                          },
+                          "to": {
+                            "type": "string",
+                            "format": "date"
+                          },
+                          "currencies": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "loaded": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Tax and invoicing"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "x-zuplo-route": {
+          "corsPolicy": "anything-goes",
+          "handler": {
+            "export": "urlForwardHandler",
+            "module": "$import(@zuplo/runtime)",
+            "options": {
+              "baseUrl": "${env.BACKEND_URL}"
+            }
+          },
+          "policies": {
+            "inbound": [
+              "monetization",
+              "upstream"
+            ]
+          },
+          "label": "Supported countries, their rules and loaded history"
+        },
+        "description": "Countries supported by /v1/tax-rates (PL, CZ, HU, GB), the rule each applies, its legal basis, the loaded date range and the currencies quoted."
+      }
+    },
+    "/v1/currencies": {
+      "get": {
+        "operationId": "listCurrencies",
+        "summary": "Supported currencies",
+        "responses": {
+          "200": {
+            "description": "Currencies quoted on the latest publication date",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "date": {
+                      "type": "string",
+                      "format": "date"
+                    },
+                    "currencies": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "code": {
+                            "type": "string",
+                            "example": "USD"
+                          },
+                          "name": {
+                            "type": "string",
+                            "example": "US dollar"
+                          },
+                          "source": {
+                            "type": "string",
+                            "example": "ECB"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Rates"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "x-zuplo-route": {
+          "corsPolicy": "anything-goes",
+          "handler": {
+            "export": "urlForwardHandler",
+            "module": "$import(@zuplo/runtime)",
+            "options": {
+              "baseUrl": "${env.BACKEND_URL}"
+            }
+          },
+          "policies": {
+            "inbound": [
+              "monetization",
+              "upstream"
+            ]
+          },
+          "label": "Supported currencies"
+        },
+        "description": "All supported currency codes with their names."
+      }
+    },
+    "/mcp": {
+      "post": {
+        "summary": "MCP server for AI agents",
+        "description": "Model Context Protocol endpoint (Streamable HTTP). Listing tools needs no key; each tool call uses the caller's API key and plan, sent as `Authorization: Bearer <key>` or `?apiKey=<key>`.",
+        "operationId": "mcpServer",
+        "tags": [
+          "AI agents"
+        ],
+        "x-zuplo-route": {
+          "corsPolicy": "anything-goes",
+          "handler": {
+            "export": "mcpServerHandler",
+            "module": "$import(@zuplo/runtime)",
+            "options": {
+              "name": "exchange-rates",
+              "version": "1.0.0",
+              "toolInputStyle": "flat",
+              "operations": [
+                {
+                  "file": "./config/routes.oas.json",
+                  "id": "getLatestRates"
+                },
+                {
+                  "file": "./config/routes.oas.json",
+                  "id": "convertAmount"
+                },
+                {
+                  "file": "./config/routes.oas.json",
+                  "id": "getHistoricalRates"
+                },
+                {
+                  "file": "./config/routes.oas.json",
+                  "id": "getTimeSeries"
+                },
+                {
+                  "file": "./config/routes.oas.json",
+                  "id": "getTaxRate"
+                },
+                {
+                  "file": "./config/routes.oas.json",
+                  "id": "listTaxCountries"
+                },
+                {
+                  "file": "./config/routes.oas.json",
+                  "id": "listCurrencies"
+                }
+              ]
+            }
+          },
+          "policies": {
+            "inbound": [
+              "api-key-from-query"
+            ]
+          },
+          "label": "MCP server for AI agents"
+        },
+        "responses": {
+          "200": {
+            "description": "MCP JSON-RPC response"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "parameters": {
+      "base": {
+        "name": "base",
+        "in": "query",
+        "schema": {
+          "type": "string",
+          "default": "EUR",
+          "example": "USD"
+        }
+      },
+      "symbols": {
+        "name": "symbols",
+        "in": "query",
+        "description": "Comma-separated currency codes; all when omitted",
+        "schema": {
+          "type": "string",
+          "example": "USD,GBP,JPY"
+        }
+      },
+      "format": {
+        "name": "format",
+        "in": "query",
+        "description": "`csv` returns one rate per line (date, base, currency, rate, derived,\nsource) for spreadsheets. Sending `Accept: text/csv` does the same.\n",
+        "schema": {
+          "type": "string",
+          "enum": [
+            "json",
+            "csv"
+          ],
+          "default": "json"
+        }
+      }
+    },
+    "responses": {
+      "Error": {
+        "description": "Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "error": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Rates": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "example": "ECB"
+          },
+          "attribution": {
+            "type": "string"
+          },
+          "base": {
+            "type": "string",
+            "example": "EUR"
+          },
+          "date": {
+            "type": "string",
+            "format": "date",
+            "description": "Publication date of the rates"
+          },
+          "requested_date": {
+            "type": "string",
+            "format": "date"
+          },
+          "derived": {
+            "type": "boolean",
+            "description": "True when rates are computed cross rates"
+          },
+          "stale": {
+            "type": "boolean",
+            "description": "True when no new rates for over 4 days"
+          },
+          "rates": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number"
+            },
+            "example": {
+              "USD": 1.165,
+              "GBP": 0.8674
+            }
+          },
+          "other_sources": {
+            "type": "object",
+            "description": "Currencies not quoted by the ECB, with the NBP table used",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "example": "NBP"
+                },
+                "table": {
+                  "type": "string",
+                  "enum": [
+                    "A",
+                    "B"
+                  ]
+                },
+                "date": {
+                  "type": "string",
+                  "format": "date"
+                }
+              }
+            }
+          }
+        }
+      },
+      "RateRange": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string"
+          },
+          "attribution": {
+            "type": "string"
+          },
+          "base": {
+            "type": "string"
+          },
+          "start": {
+            "type": "string",
+            "format": "date"
+          },
+          "end": {
+            "type": "string",
+            "format": "date"
+          },
+          "derived": {
+            "type": "boolean"
+          },
+          "rates": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "number"
+              }
+            }
+          },
+          "other_sources": {
+            "type": "object",
+            "description": "Currencies not quoted by the ECB, with the NBP table used",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "example": "NBP"
+                },
+                "table": {
+                  "type": "string",
+                  "enum": [
+                    "A",
+                    "B"
+                  ]
+                },
+                "date": {
+                  "type": "string",
+                  "format": "date"
+                }
+              }
+            }
+          }
+        }
+      },
+      "Conversion": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string"
+          },
+          "attribution": {
+            "type": "string"
+          },
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "amount": {
+            "type": "number"
+          },
+          "rate": {
+            "type": "number"
+          },
+          "result": {
+            "type": "number"
+          },
+          "derived": {
+            "type": "boolean"
+          },
+          "stale": {
+            "type": "boolean"
+          },
+          "other_sources": {
+            "type": "object",
+            "description": "Currencies not quoted by the ECB, with the NBP table used",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "example": "NBP"
+                },
+                "table": {
+                  "type": "string",
+                  "enum": [
+                    "A",
+                    "B"
+                  ]
+                },
+                "date": {
+                  "type": "string",
+                  "format": "date"
+                }
+              }
+            }
+          }
+        }
+      },
+      "TimeSeries": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string"
+          },
+          "attribution": {
+            "type": "string"
+          },
+          "base": {
+            "type": "string"
+          },
+          "start": {
+            "type": "string",
+            "format": "date"
+          },
+          "end": {
+            "type": "string",
+            "format": "date"
+          },
+          "derived": {
+            "type": "boolean"
+          },
+          "series": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "date": {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  "rate": {
+                    "type": "number"
+                  }
+                }
+              }
+            }
+          },
+          "stats": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "start": {
+                  "type": "number"
+                },
+                "end": {
+                  "type": "number"
+                },
+                "min": {
+                  "type": "number"
+                },
+                "max": {
+                  "type": "number"
+                },
+                "change": {
+                  "type": "number"
+                },
+                "change_percent": {
+                  "type": "number"
+                }
+              }
+            }
+          },
+          "other_sources": {
+            "type": "object",
+            "description": "Currencies not quoted by the ECB, with the NBP table used",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "example": "NBP"
+                },
+                "table": {
+                  "type": "string",
+                  "enum": [
+                    "A",
+                    "B"
+                  ]
+                },
+                "date": {
+                  "type": "string",
+                  "format": "date"
+                }
+              }
+            }
+          }
+        }
+      },
+      "RatesCSV": {
+        "type": "string",
+        "example": "date,base,currency,rate,derived,source\n2026-10-16,EUR,USD,1.165,false,ECB\n"
+      },
+      "TaxRate": {
+        "type": "object",
+        "properties": {
+          "country": {
+            "type": "string",
+            "example": "PL"
+          },
+          "local_currency": {
+            "type": "string",
+            "example": "PLN"
+          },
+          "currency": {
+            "type": "string",
+            "example": "USD"
+          },
+          "date": {
+            "type": "string",
+            "format": "date",
+            "description": "Tax point as requested"
+          },
+          "invoice_date": {
+            "type": "string",
+            "format": "date"
+          },
+          "applied_date": {
+            "type": "string",
+            "format": "date",
+            "description": "Date the rule was applied to"
+          },
+          "rate": {
+            "type": "number",
+            "example": 3.6512,
+            "description": "Local currency per 1 unit of currency"
+          },
+          "published": {
+            "type": "object",
+            "properties": {
+              "value": {
+                "type": "number",
+                "example": 3.6512
+              },
+              "quote": {
+                "type": "string",
+                "example": "PLN per 1 USD"
+              }
+            }
+          },
+          "amount": {
+            "type": "number"
+          },
+          "result": {
+            "type": "number",
+            "description": "amount converted into local currency"
+          },
+          "source": {
+            "type": "string",
+            "example": "NBP"
+          },
+          "table": {
+            "type": "string",
+            "example": "199/A/NBP/2026",
+            "description": "The authority's table number"
+          },
+          "rate_date": {
+            "type": "string",
+            "format": "date",
+            "description": "Publication date of the table used"
+          },
+          "valid_to": {
+            "type": "string",
+            "format": "date",
+            "description": "End of the period",
+            "for monthly tables": null
+          },
+          "provisional": {
+            "type": "boolean"
+          },
+          "rule": {
+            "type": "string"
+          },
+          "legal_basis": {
+            "type": "string"
+          },
+          "attribution": {
+            "type": "string"
+          },
+          "disclaimer": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "apiKey": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Your API key from the developer portal."
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Rates",
+      "description": "Official ECB reference rates, plus currencies from Narodowy Bank Polski."
+    },
+    {
+      "name": "Tax and invoicing",
+      "description": "The official rate a country's VAT rule requires for a document date."
+    },
+    {
+      "name": "AI agents",
+      "description": "Use the API as tools from Claude, ChatGPT, Cursor and other MCP clients."
+    }
+  ]
+}

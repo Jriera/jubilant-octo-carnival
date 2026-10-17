@@ -1,0 +1,30 @@
+---
+title: Introduction
+---
+
+Exchange Rates serves official reference rates published by central banks and
+tax authorities: ECB euro reference rates, NBP tables A and B, and the rates
+Poland, the Czech Republic, Hungary and the UK require on VAT invoices.
+
+## Get started
+
+1. Sign in and pick a plan on the **Pricing** page.
+2. Copy your API key from **API Keys**.
+3. Call the API with the key as a bearer token:
+
+```bash
+curl -H "Authorization: Bearer YOUR_KEY" \
+  "https://YOUR-GATEWAY.zuplo.app/v1/latest?base=USD&symbols=EUR,GBP"
+```
+
+## What each plan includes
+
+| Feature | Free | Paid plans |
+| --- | --- | --- |
+| Latest, historical, convert, currencies | ✓ | ✓ |
+| Tax and invoicing rates (`/v1/tax-rates`) | | ✓ |
+| Time series (`/v1/timeseries`) | | ✓ |
+| CSV export (`format=csv`) | | ✓ |
+
+Rates are reference rates for information, invoicing and accounting. They are
+not trading quotes.

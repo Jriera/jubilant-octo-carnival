@@ -3,7 +3,9 @@
 // Environment:
 //
 //	PORT                   listen port (default 8080)
-//	RAPIDAPI_PROXY_SECRET  when set, /v1 requests must carry this X-RapidAPI-Proxy-Secret
+//	RAPIDAPI_PROXY_SECRET  secret RapidAPI sends in X-RapidAPI-Proxy-Secret
+//	GATEWAY_SECRET         secret the Zuplo gateway sends in X-Gateway-Secret
+//	                       (when either is set, /v1 requests must carry one of them)
 //	ECB_BASE_URL           override the ECB download location (tests, mirrors)
 //	REFRESH_INTERVAL       how often to poll the ECB daily file (default 10m)
 //	TAX_COUNTRIES          tax-rate countries to load (default PL,CZ,HU,GB; "none" disables)
@@ -55,7 +57,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:              ":" + port,
-		Handler:           (&api.Server{Store: store, Tax: tax, Extra: extra, ProxySecret: os.Getenv("RAPIDAPI_PROXY_SECRET")}).Handler(),
+		Handler:           (&api.Server{Store: store, Tax: tax, Extra: extra, ProxySecret: os.Getenv("RAPIDAPI_PROXY_SECRET"), GatewaySecret: os.Getenv("GATEWAY_SECRET")}).Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      15 * time.Second,

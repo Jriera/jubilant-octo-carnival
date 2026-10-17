@@ -1,0 +1,28 @@
+name: Deploy gateway
+on:
+  push:
+    branches: [main]
+    paths: ["gateway/**", ".github/workflows/deploy-gateway.yml"]
+  pull_request:
+    paths: ["gateway/**", ".github/workflows/deploy-gateway.yml"]
+jobs:
+  gateway:
+    runs-on: ubuntu-latest
+    env:
+      ZUPLO_API_KEY: ${{ secrets.ZUPLO_API_KEY }}
+    defaults:
+      run:
+        working-directory: gateway
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: gateway/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npx zuplo lint
+      # Deploys only from main, and only once the ZUPLO_API_KEY secret exists.
+      - if: github.event_name == 'push' && env.ZUPLO_API_KEY != ''
+        run: npx zuplo deploy --api-key "$ZUPLO_API_KEY" --environment main

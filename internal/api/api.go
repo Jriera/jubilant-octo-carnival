@@ -31,8 +31,11 @@ type Server struct {
 	Store       *rates.Store
 	Tax         []*official.Country // tax and invoicing rules; optional
 	Extra       *official.Extra     // currencies the ECB doesn't quote; optional
-	ProxySecret string              // when set, requests must carry X-RapidAPI-Proxy-Secret
-	Now         func() time.Time    // for tests
+	ProxySecret string              // RapidAPI: requests may carry it in X-RapidAPI-Proxy-Secret
+	// GatewaySecret is for a second gateway (Zuplo): requests may carry it in
+	// X-Gateway-Secret. When either secret is set, a request must match one.
+	GatewaySecret string
+	Now           func() time.Time // for tests
 }
 
 func (s *Server) Handler() http.Handler {
@@ -58,15 +61,20 @@ func (s *Server) now() time.Time {
 
 func (s *Server) auth(h http.HandlerFunc) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if s.ProxySecret != "" {
-			got := r.Header.Get("X-RapidAPI-Proxy-Secret")
-			if subtle.ConstantTimeCompare([]byte(got), []byte(s.ProxySecret)) != 1 {
+		if s.ProxySecret != "" || s.GatewaySecret != "" {
+			if !matches(r.Header.Get("X-RapidAPI-Proxy-Secret"), s.ProxySecret) &&
+				!matches(r.Header.Get("X-Gateway-Secret"), s.GatewaySecret) {
 				writeErr(w, http.StatusForbidden, "forbidden")
 				return
 			}
 		}
 		h(w, r)
 	})
+}
+
+// matches compares in constant time; an unset secret never matches.
+func matches(got, want string) bool {
+	return want != "" && subtle.ConstantTimeCompare([]byte(got), []byte(want)) == 1
 }
 
 func (s *Server) ready(w http.ResponseWriter, _ *http.Request) {

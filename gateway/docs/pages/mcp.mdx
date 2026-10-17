@@ -1,0 +1,17 @@
+---
+title: AI assistants (MCP)
+---
+
+The API is also an [MCP](https://modelcontextprotocol.io) server, so AI
+assistants such as Claude, ChatGPT and Cursor can look up rates directly. It
+uses the same API key and counts against the same plan.
+
+**Server URL:** `https://YOUR-GATEWAY.zuplo.app/mcp`
+
+Clients that let you set headers should send `Authorization: Bearer YOUR_KEY`.
+Clients that only take a URL can put the key in the query string instead:
+`https://YOUR-GATEWAY.zuplo.app/mcp?apiKey=YOUR_KEY`.
+
+Tools: `getLatestRates`, `convertAmount`, `getHistoricalRates`,
+`getTimeSeries`, `getTaxRate`, `listTaxCountries`, `listCurrencies`.
+Tools for paid features return an error on the free plan.

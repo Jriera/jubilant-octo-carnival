@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -127,6 +128,30 @@ func TestProxySecret(t *testing.T) {
 	}
 	if code, _ := get(t, h, "/healthz", nil); code != 200 {
 		t.Fatalf("healthz needs no secret: %d", code)
+	}
+}
+
+func TestGatewaySecret(t *testing.T) {
+	s := testServer("rapid")
+	s.GatewaySecret = "zuplo"
+	h := s.Handler()
+	for hdr, want := range map[string]int{
+		"X-RapidAPI-Proxy-Secret=rapid": 200,
+		"X-Gateway-Secret=zuplo":        200,
+		"X-Gateway-Secret=rapid":        403, // secrets are not interchangeable
+		"X-RapidAPI-Proxy-Secret=zuplo": 403,
+		"X-Gateway-Secret=":             403,
+	} {
+		k, v, _ := strings.Cut(hdr, "=")
+		if code, _ := get(t, h, "/v1/latest", map[string]string{k: v}); code != want {
+			t.Errorf("%s: %d, want %d", hdr, code, want)
+		}
+	}
+	// Only the gateway secret set: an empty RapidAPI header must not pass.
+	only := testServer("")
+	only.GatewaySecret = "zuplo"
+	if code, _ := get(t, only.Handler(), "/v1/latest", map[string]string{"X-RapidAPI-Proxy-Secret": ""}); code != 403 {
+		t.Fatalf("empty secret matched: %d", code)
 	}
 }
 
